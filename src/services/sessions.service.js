@@ -1,5 +1,6 @@
 import { usersRepository } from "../repositories/users.repository.js";
-import { createHash } from "../utils/hash.js";
+import { createHash, isValidPassword } from "../utils/hash.js";
+import { generateToken } from "../utils/jwt.js";
 import { HttpError } from "../utils/httpError.js";
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -73,6 +74,35 @@ export default class SessionsService {
       }
       throw error;
     }
+  };
+
+  login = async (body) => {
+    const { email, password } = body ?? {};
+
+    if ([email, password].some(isMissing)) {
+      throw new HttpError(400, "Faltan campos obligatorios");
+    }
+
+    if ([email, password].some((v) => typeof v !== "string")) {
+      throw new HttpError(400, "Todos los campos deben ser de tipo texto");
+    }
+
+    const user = await this.repository.getUserByEmail(
+      email.trim().toLowerCase(),
+    );
+
+    const passwordMatches = user
+      ? await isValidPassword(password, user.password)
+      : false;
+    if (!passwordMatches) {
+      throw new HttpError(401, "Credenciales inválidas");
+    }
+
+    return generateToken({
+      id: user._id.toString(),
+      email: user.email,
+      role: user.role,
+    });
   };
 }
 

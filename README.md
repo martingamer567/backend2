@@ -4,7 +4,7 @@ API REST para una plataforma de gestión de eventos y sesiones. Permite administ
 
 **Temática elegida:** Plataforma de eventos (events & sessions).
 
-Este repositorio corresponde a la **Pre-entrega 2**: sobre la estructura base por capas (Pre-entrega 1) se suma persistencia en MongoDB Atlas con Mongoose y el registro seguro de usuarios (contraseñas hasheadas con bcrypt).
+Este repositorio corresponde a la **Pre-entrega 3**: sobre el registro seguro de usuarios (Pre-entrega 2) se suma la autenticación con JWT guardado en una cookie `httpOnly`: login, ruta protegida `/current` y logout.
 
 ## Tecnologías
 
@@ -13,6 +13,8 @@ Este repositorio corresponde a la **Pre-entrega 2**: sobre la estructura base po
 - Mongoose
 - MongoDB Atlas
 - bcrypt
+- jsonwebtoken
+- cookie-parser
 - dotenv
 - Módulos ES (ESM)
 
@@ -20,16 +22,16 @@ Este repositorio corresponde a la **Pre-entrega 2**: sobre la estructura base po
 
 1. Clonar el repositorio:
 
-   ```bash
+```bash
    git clone https://github.com/martingamer567/backend2.git
    cd backend2
-   ```
+```
 
 2. Instalar dependencias:
 
-   ```bash
+```bash
    npm install
-   ```
+```
 
 ## Configuración de variables de entorno
 
@@ -39,21 +41,20 @@ Crear un archivo `.env` en la raíz del proyecto a partir de `.env.example`:
 cp .env.example .env
 ```
 
-El archivo `.env` real **no se sube al repositorio** (está excluido en `.gitignore`); cada quien debe crear el propio a partir de `.env.example` con sus credenciales.
+El archivo `.env` real **no se sube al repositorio** (está excluido en `.gitignore`); cada quien debe crear el propio con sus credenciales.
 
-Variables disponibles:
-
-| Variable             | Descripción                                                    | Ejemplo                                                                          |
-| --------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `PORT`                | Puerto en el que se levanta el servidor                        | `3000`                                                                             |
-| `NODE_ENV`            | Entorno de ejecución                                            | `development`                                                                      |
-| `MONGO_URL`           | Cadena de conexión a la base de datos en MongoDB Atlas          | `mongodb+srv://<usuario>:<password>@<cluster>.mongodb.net/eventos?retryWrites=true&w=majority` |
-| `JWT_SECRET`          | Secreto para firmar tokens JWT (uso futuro)                     | `un_secreto_seguro`                                                                |
-| `BCRYPT_SALT_ROUNDS`  | Rondas de sal para el hash de contraseñas con bcrypt (opcional, por defecto `10`) | `10`                                                              |
+| Variable             | Descripción                                                          | Ejemplo                                                                                          |
+| -------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `PORT`               | Puerto en el que se levanta el servidor                              | `3000`                                                                                           |
+| `NODE_ENV`           | Entorno de ejecución (con `production` la cookie se marca `secure`)  | `development`                                                                                    |
+| `MONGO_URL`          | Cadena de conexión a la base de datos en MongoDB Atlas               | `mongodb+srv://<usuario>:<password>@<cluster>.mongodb.net/eventos?retryWrites=true&w=majority`   |
+| `JWT_SECRET`         | Secreto con el que se firman los JWT (obligatorio, nunca va en el código) | `una_cadena_larga_y_aleatoria`                                                              |
+| `JWT_EXPIRES_IN`     | Tiempo de vida del token JWT (por defecto `1h`)                      | `1h`                                                                                             |
+| `BCRYPT_SALT_ROUNDS` | Rondas de sal para el hash de contraseñas (opcional, por defecto `10`) | `10`                                                                                           |
 
 ## Cómo ejecutar
 
-Modo desarrollo (con recarga automática ante cambios):
+Modo desarrollo (con recarga automática ante cambios en el código; si cambiás el `.env` hay que reiniciar):
 
 ```bash
 npm run dev
@@ -70,7 +71,7 @@ El servidor toma el puerto desde la variable de entorno `PORT` (por defecto `300
 ## Estructura de carpetas
 
 ```
-proyecto-eventos-api/
+backend2/
 ├── src/
 │   ├── app.js                        # Configura Express (middlewares y rutas)
 │   ├── server.js                     # Conecta la base de datos y levanta el servidor
@@ -80,13 +81,13 @@ proyecto-eventos-api/
 │   ├── routes/
 │   │   ├── health.router.js
 │   │   ├── events.router.js
-│   │   └── sessions.router.js        # GET / y POST /register
+│   │   └── sessions.router.js        # register, login, current y logout
 │   ├── controllers/
 │   │   ├── health.controller.js
 │   │   ├── events.controller.js
-│   │   └── sessions.controller.js
+│   │   └── sessions.controller.js    # Respuestas HTTP y manejo de la cookie
 │   ├── services/
-│   │   └── sessions.service.js       # Lógica de negocio del registro de usuarios
+│   │   └── sessions.service.js       # Reglas de negocio: registro y login
 │   ├── repositories/
 │   │   └── users.repository.js       # Abstracción de acceso a datos de usuarios
 │   ├── dao/
@@ -94,10 +95,12 @@ proyecto-eventos-api/
 │   ├── models/
 │   │   ├── User.js                   # Esquema de Mongoose para usuarios
 │   │   └── Event.js
-│   ├── middlewares/                  # Middlewares personalizados (próximas entregas)
+│   ├── middlewares/
+│   │   └── auth.middleware.js        # Protege rutas: verifica el JWT de la cookie
 │   └── utils/
-│       ├── hash.js                   # Hash y verificación de contraseñas con bcrypt
-│       └── httpError.js              # Clase de error con statusCode para el flujo de la API
+│       ├── hash.js                   # Hash y verificación de contraseñas (bcrypt)
+│       ├── jwt.js                    # Firma y verificación de JWT
+│       └── httpError.js              # Error con statusCode para el flujo de la API
 ├── .env.example
 ├── .gitignore
 ├── package.json
@@ -106,133 +109,154 @@ proyecto-eventos-api/
 
 ## Rutas disponibles
 
-| Método | Ruta                     | Descripción                                    |
-| ------ | ------------------------ | ----------------------------------------------- |
-| GET    | `/api/health`            | Verifica que el servidor esté activo            |
-| GET    | `/api/events`            | Lista de eventos (vacía en esta entrega)        |
-| GET    | `/api/sessions`          | Lista de sesiones (vacía en esta entrega)       |
-| POST   | `/api/sessions/register` | Registra un nuevo usuario con contraseña hasheada |
+| Método | Ruta                     | Descripción                                          | Requiere sesión |
+| ------ | ------------------------ | ---------------------------------------------------- | --------------- |
+| GET    | `/api/health`            | Verifica que el servidor esté activo                 | No              |
+| GET    | `/api/events`            | Lista de eventos (vacía por ahora)                   | No              |
+| GET    | `/api/sessions`          | Lista de sesiones (vacía por ahora)                  | No              |
+| POST   | `/api/sessions/register` | Registra un usuario nuevo con contraseña hasheada    | No              |
+| POST   | `/api/sessions/login`    | Inicia sesión y guarda el JWT en la cookie `currentUser` | No          |
+| GET    | `/api/sessions/current`  | Devuelve los datos del usuario autenticado           | **Sí**          |
+| POST   | `/api/sessions/logout`   | Cierra sesión (elimina la cookie `currentUser`)      | No              |
 
-### Ejemplos de respuesta
+### GET /api/health
 
-`GET /api/health`
+Respuesta `200`:
 
 ```json
 { "status": "ok", "message": "Servidor activo" }
 ```
 
-`GET /api/events`
+### GET /api/events
+
+Respuesta `200`:
 
 ```json
 { "status": "success", "payload": [] }
 ```
 
-## Registro de usuarios (POST /api/sessions/register)
+### GET /api/sessions
 
-### Body esperado (JSON)
+Respuesta `200`:
 
-| Campo        | Tipo   | Obligatorio |
-| ------------ | ------ | ------------ |
-| `first_name` | string | Sí           |
-| `last_name`  | string | Sí           |
-| `email`      | string | Sí           |
-| `password`   | string | Sí           |
-
-### Reglas de validación
-
-- Los cuatro campos (`first_name`, `last_name`, `email`, `password`) son obligatorios y deben ser de tipo `string`.
-- El `email` debe tener un formato válido y se normaliza (`trim` + `lowercase`) antes de validarlo y guardarlo.
-- La `password` debe tener un mínimo de 8 caracteres.
-- El `email` debe ser único: si ya existe un usuario registrado con ese email, se rechaza la petición.
-- La `password` se guarda siempre hasheada con bcrypt (nunca en texto plano), usando `BCRYPT_SALT_ROUNDS` como cantidad de rondas.
-- El `role` **no puede enviarse desde el body**: aunque se incluya en la petición, se ignora — el usuario siempre se crea con `role: "user"`.
-
-### Ejemplo de request
-
-Nota cómo el email se envía con mayúsculas y un espacio al final: la API lo normaliza antes de guardarlo.
-
-```
-POST /api/sessions/register
-Content-Type: application/json
-
-{
-  "first_name": "Ana",
-  "last_name": "Pérez",
-  "email": "Ana@Mail.com ",
-  "password": "Secreta123"
-}
+```json
+{ "status": "success", "payload": [] }
 ```
 
-### Respuestas
+### POST /api/sessions/register
 
-**201 Created** — registro exitoso, con el email ya normalizado y sin el campo `password`:
+Body (JSON), todos los campos son obligatorios y de tipo `string`:
+
+```json
+{ "first_name": "Ana", "last_name": "Perez", "email": "Ana@Mail.com ", "password": "Secreta123" }
+```
+
+Reglas: el email debe tener formato válido y se normaliza (`trim` + `lowercase`); la contraseña debe tener al menos 8 caracteres y se guarda hasheada con bcrypt; el email debe ser único; el `role` **no puede enviarse en el body** (el usuario siempre se crea con `role: "user"`).
+
+Respuesta `201` (nunca incluye `password`):
 
 ```json
 {
   "status": "success",
-  "payload": {
-    "id": "665f2a1e8f1b2c0012345678",
-    "first_name": "Ana",
-    "last_name": "Pérez",
-    "email": "ana@mail.com",
-    "role": "user"
-  }
+  "payload": { "id": "665f2a...", "first_name": "Ana", "last_name": "Perez", "email": "ana@mail.com", "role": "user" }
 }
 ```
 
-**400 Bad Request** — campos faltantes:
+Respuesta `400` (campos faltantes, email inválido o contraseña corta):
 
 ```json
 { "status": "error", "message": "Faltan campos obligatorios" }
 ```
 
-**400 Bad Request** — email con formato inválido:
-
-```json
-{ "status": "error", "message": "El formato del email no es válido" }
-```
-
-**400 Bad Request** — contraseña corta:
-
-```json
-{ "status": "error", "message": "La contraseña debe tener al menos 8 caracteres" }
-```
-
-**409 Conflict** — email ya registrado:
+Respuesta `409` (email ya registrado):
 
 ```json
 { "status": "error", "message": "El email ya está registrado" }
 ```
 
-### Cómo probarlo
+### POST /api/sessions/login
 
-**Con curl:**
+Body (JSON):
 
-```bash
-curl -X POST http://localhost:3000/api/sessions/register \
-  -H "Content-Type: application/json" \
-  -d '{"first_name":"Ana","last_name":"Pérez","email":"Ana@Mail.com ","password":"Secreta123"}'
+```json
+{ "email": "ana@mail.com", "password": "Secreta123" }
 ```
 
-**Con Postman / Thunder Client:**
+Si las credenciales son correctas, se genera un JWT con payload `{ id, email, role }` (firmado con `JWT_SECRET`, con la expiración de `JWT_EXPIRES_IN`) y se guarda en la cookie `currentUser` con `httpOnly: true`, `sameSite: 'lax'`, `maxAge: 3600000` y `secure: true` solo en producción. El token **no** viaja en el body.
 
-1. Método `POST` a `http://localhost:3000/api/sessions/register`.
-2. Header `Content-Type: application/json`.
-3. Body tipo `raw` / `JSON` con `first_name`, `last_name`, `email` y `password`.
-4. Enviar y verificar que la respuesta sea `201` con el `payload` sin el campo `password`.
+Respuesta `200` (además setea la cookie `currentUser`):
 
-**Verificar en MongoDB Atlas:**
+```json
+{ "status": "success", "message": "Login correcto" }
+```
 
-1. Entrar al cluster en Atlas y abrir **Data Explorer** (Browse Collections).
-2. Ubicar la base `eventos` y la colección `users`.
-3. Abrir el documento recién creado y confirmar que el campo `password` es un hash de bcrypt (empieza con `$2b$`) y no la contraseña en texto plano.
+Respuesta `400` (falta `email` o `password`):
+
+```json
+{ "status": "error", "message": "Faltan campos obligatorios" }
+```
+
+Respuesta `401` (email inexistente o contraseña incorrecta; el mensaje es siempre el mismo y no indica qué falló):
+
+```json
+{ "status": "error", "message": "Credenciales inválidas" }
+```
+
+### GET /api/sessions/current
+
+Ruta protegida: el middleware `auth` lee la cookie `currentUser`, verifica el JWT y guarda el payload en `req.user`.
+
+Respuesta `200` (con la cookie):
+
+```json
+{ "status": "success", "payload": { "id": "665f2a...", "email": "ana@mail.com", "role": "user" } }
+```
+
+Respuesta `401` (sin cookie, o con token inválido o expirado):
+
+```json
+{ "status": "error", "message": "No autenticado" }
+```
+
+### POST /api/sessions/logout
+
+Elimina la cookie `currentUser`. Respuesta `200`:
+
+```json
+{ "status": "success", "message": "Sesión cerrada" }
+```
+
+## Cómo probar los endpoints
+
+**Con curl** (el parámetro `-c` guarda la cookie en un archivo y `-b` la envía):
+
+```bash
+# Registro
+curl -X POST http://localhost:3000/api/sessions/register \
+  -H "Content-Type: application/json" \
+  -d '{"first_name":"Ana","last_name":"Perez","email":"ana@mail.com","password":"Secreta123"}'
+
+# Login (guarda la cookie)
+curl -X POST http://localhost:3000/api/sessions/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"ana@mail.com","password":"Secreta123"}' -c ~/cookies.txt
+
+# Ruta protegida (envía la cookie)
+curl http://localhost:3000/api/sessions/current -b ~/cookies.txt
+
+# Logout
+curl -X POST http://localhost:3000/api/sessions/logout -b ~/cookies.txt -c ~/cookies.txt
+```
+
+**Con Postman / Thunder Client:** hacer el `POST` al login con el body JSON; el cliente guarda la cookie `currentUser` automáticamente y la envía en los pedidos siguientes a `/current`.
+
+**Verificar el hash en MongoDB Atlas:** en *Data Explorer*, base `eventos`, colección `users`, el campo `password` de cada usuario es un hash de bcrypt (empieza con `$2b$`) y nunca la contraseña en texto plano.
 
 ### Casos de prueba
 
-- Registro exitoso con los 4 campos válidos → `201` con el usuario creado.
-- Campos faltantes → `400` con `"Faltan campos obligatorios"`.
-- Email con formato inválido → `400` con `"El formato del email no es válido"`.
-- Email duplicado → `409` con `"El email ya está registrado"`.
-- La contraseña queda hasheada en la base de datos (verificable en MongoDB Atlas, valor que empieza con `$2b$`).
-- La respuesta `201` nunca incluye el campo `password`.
-
+- Registro exitoso → login → `/current` → logout → `/current` devuelve `401`.
+- Login con email inexistente → `401` "Credenciales inválidas".
+- Login con contraseña incorrecta → `401` "Credenciales inválidas" (mismo mensaje).
+- `/current` sin cookie → `401`.
+- `/current` con token manipulado o expirado → `401`.
+- Registro: campos faltantes, email inválido y email duplicado devuelven `400`, `400` y `409`.

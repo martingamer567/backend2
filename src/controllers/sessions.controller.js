@@ -1,5 +1,5 @@
-import { sessionsService } from "../services/sessions.service.js";
 import { config } from "../config/config.js";
+import { generateToken } from "../utils/jwt.js";
 
 const COOKIE_NAME = "currentUser";
 
@@ -9,44 +9,28 @@ const cookieOptions = {
   secure: config.nodeEnv === "production",
 };
 
-const handleError = (res, error) => {
-  const statusCode = error.statusCode || 500;
-
-  if (statusCode === 500) {
-    console.error(error);
-    return res
-      .status(500)
-      .json({ status: "error", message: "Error interno del servidor" });
-  }
-
-  return res
-    .status(statusCode)
-    .json({ status: "error", message: error.message });
-};
-
 export const getSessions = (req, res) => {
   res.status(200).json({ status: "success", payload: [] });
 };
 
-export const register = async (req, res) => {
-  try {
-    const user = await sessionsService.register(req.body);
-    return res.status(201).json({ status: "success", payload: user });
-  } catch (error) {
-    return handleError(res, error);
-  }
+export const register = (req, res) => {
+  return res.status(201).json({ status: "success", payload: req.user });
 };
 
-export const login = async (req, res) => {
+export const login = (req, res) => {
   try {
-    const token = await sessionsService.login(req.body);
+    const { id, email, role } = req.user;
+    const token = generateToken({ id, email, role });
 
     res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: 3600000 });
     return res
       .status(200)
       .json({ status: "success", message: "Login correcto" });
   } catch (error) {
-    return handleError(res, error);
+    console.error(error);
+    return res
+      .status(500)
+      .json({ status: "error", message: "Error interno del servidor" });
   }
 };
 

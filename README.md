@@ -4,7 +4,7 @@ API REST para una plataforma de gestión de eventos y sesiones. Permite administ
 
 **Temática elegida:** Plataforma de eventos (events & sessions).
 
-Este repositorio corresponde a la **Pre-entrega 3**: sobre el registro seguro de usuarios (Pre-entrega 2) se suma la autenticación con JWT guardado en una cookie `httpOnly`: login, ruta protegida `/current` y logout.
+Este repositorio corresponde a la **Pre-entrega 4**: sobre la autenticación con JWT guardado en una cookie `httpOnly` (Pre-entrega 3), la autenticación se centraliza en estrategias de Passport.js (`register`, `login` y `current`). El comportamiento externo de la API no cambia respecto de la Pre-entrega 3.
 
 ## Tecnologías
 
@@ -15,6 +15,7 @@ Este repositorio corresponde a la **Pre-entrega 3**: sobre el registro seguro de
 - bcrypt
 - jsonwebtoken
 - cookie-parser
+- passport, passport-local y passport-jwt
 - dotenv
 - Módulos ES (ESM)
 
@@ -73,11 +74,12 @@ El servidor toma el puerto desde la variable de entorno `PORT` (por defecto `300
 ```
 backend2/
 ├── src/
-│   ├── app.js                        # Configura Express (middlewares y rutas)
+│   ├── app.js                        # Configura Express (middlewares, Passport y rutas)
 │   ├── server.js                     # Conecta la base de datos y levanta el servidor
 │   ├── config/
 │   │   ├── config.js                 # Lectura centralizada de variables de entorno
-│   │   └── db.js                     # Conexión a MongoDB (Mongoose)
+│   │   ├── db.js                     # Conexión a MongoDB (Mongoose)
+│   │   └── passport.config.js        # Estrategias de Passport: register, login y current
 │   ├── routes/
 │   │   ├── health.router.js
 │   │   ├── events.router.js
@@ -85,9 +87,7 @@ backend2/
 │   ├── controllers/
 │   │   ├── health.controller.js
 │   │   ├── events.controller.js
-│   │   └── sessions.controller.js    # Respuestas HTTP y manejo de la cookie
-│   ├── services/
-│   │   └── sessions.service.js       # Reglas de negocio: registro y login
+│   │   └── sessions.controller.js    # Respuestas HTTP, generación del JWT y cookie
 │   ├── repositories/
 │   │   └── users.repository.js       # Abstracción de acceso a datos de usuarios
 │   ├── dao/
@@ -96,16 +96,34 @@ backend2/
 │   │   ├── User.js                   # Esquema de Mongoose para usuarios
 │   │   └── Event.js
 │   ├── middlewares/
-│   │   └── auth.middleware.js        # Protege rutas: verifica el JWT de la cookie
+│   │   └── passportCall.js           # Envuelve passport.authenticate (mantiene status y mensajes)
 │   └── utils/
 │       ├── hash.js                   # Hash y verificación de contraseñas (bcrypt)
-│       ├── jwt.js                    # Firma y verificación de JWT
-│       └── httpError.js              # Error con statusCode para el flujo de la API
+│       └── jwt.js                    # Firma de JWT
 ├── .env.example
 ├── .gitignore
 ├── package.json
 └── README.md
 ```
+
+## Estrategias de Passport
+
+Toda la autenticación está centralizada en `src/config/passport.config.js`.
+`app.js` solo llama a `initializePassport()` y `passport.initialize()`.
+
+| Estrategia | Tipo | Qué hace |
+| ---------- | ---- | -------- |
+| `register` | passport-local | Valida los datos, normaliza el email, verifica que no exista, hashea la contraseña con bcrypt y crea el usuario con rol `user` por defecto. |
+| `login`    | passport-local | Valida las credenciales. Ante cualquier fallo de autenticación responde con el mismo mensaje genérico "Credenciales inválidas". |
+| `current`  | passport-jwt   | Lee el JWT desde la cookie `currentUser`, lo valida y deja `{ id, email, role }` en `req.user`. |
+
+- Las estrategias no generan el token: tras un login exitoso, el controller genera el JWT y setea la cookie `currentUser` (`httpOnly`).
+- `POST /api/sessions/logout` elimina la cookie y no pasa por Passport.
+- El middleware `passportCall` (`src/middlewares/passportCall.js`) envuelve `passport.authenticate` para mantener los status y mensajes de la API.
+
+### Preparado para providers externos
+
+El sistema queda preparado para sumar providers externos (Google, GitHub, etc.): alcanza con definir la nueva estrategia en `passport.config.js` y registrarla en `initializePassport()`, sin tocar `app.js`.
 
 ## Rutas disponibles
 
@@ -114,9 +132,9 @@ backend2/
 | GET    | `/api/health`            | Verifica que el servidor esté activo                 | No              |
 | GET    | `/api/events`            | Lista de eventos (vacía por ahora)                   | No              |
 | GET    | `/api/sessions`          | Lista de sesiones (vacía por ahora)                  | No              |
-| POST   | `/api/sessions/register` | Registra un usuario nuevo con contraseña hasheada    | No              |
-| POST   | `/api/sessions/login`    | Inicia sesión y guarda el JWT en la cookie `currentUser` | No          |
-| GET    | `/api/sessions/current`  | Devuelve los datos del usuario autenticado           | **Sí**          |
+| POST   | `/api/sessions/register` | Registra un usuario nuevo (estrategia `register`)    | No              |
+| POST   | `/api/sessions/login`    | Inicia sesión (estrategia `login`) y guarda el JWT en la cookie `currentUser` | No |
+| GET    | `/api/sessions/current`  | Devuelve los datos del usuario autenticado (estrategia `current`) | **Sí** |
 | POST   | `/api/sessions/logout`   | Cierra sesión (elimina la cookie `currentUser`)      | No              |
 
 ### GET /api/health
@@ -151,7 +169,7 @@ Body (JSON), todos los campos son obligatorios y de tipo `string`:
 { "first_name": "Ana", "last_name": "Perez", "email": "Ana@Mail.com ", "password": "Secreta123" }
 ```
 
-Reglas: el email debe tener formato válido y se normaliza (`trim` + `lowercase`); la contraseña debe tener al menos 8 caracteres y se guarda hasheada con bcrypt; el email debe ser único; el `role` **no puede enviarse en el body** (el usuario siempre se crea con `role: "user"`).
+Reglas (se validan dentro de la estrategia `register`): el email debe tener formato válido y se normaliza (`trim` + `lowercase`); la contraseña debe tener al menos 8 caracteres y se guarda hasheada con bcrypt; el email debe ser único; el `role` **no puede enviarse en el body** (el usuario siempre se crea con `role: "user"`).
 
 Respuesta `201` (nunca incluye `password`):
 
@@ -162,7 +180,7 @@ Respuesta `201` (nunca incluye `password`):
 }
 ```
 
-Respuesta `400` (campos faltantes, email inválido o contraseña corta):
+Respuesta `400` (campos faltantes, campos que no son texto, email inválido o contraseña corta), por ejemplo:
 
 ```json
 { "status": "error", "message": "Faltan campos obligatorios" }
@@ -182,7 +200,7 @@ Body (JSON):
 { "email": "ana@mail.com", "password": "Secreta123" }
 ```
 
-Si las credenciales son correctas, se genera un JWT con payload `{ id, email, role }` (firmado con `JWT_SECRET`, con la expiración de `JWT_EXPIRES_IN`) y se guarda en la cookie `currentUser` con `httpOnly: true`, `sameSite: 'lax'`, `maxAge: 3600000` y `secure: true` solo en producción. El token **no** viaja en el body.
+La estrategia `login` valida las credenciales. Si son correctas, el controller genera un JWT con payload `{ id, email, role }` (firmado con `JWT_SECRET`, con la expiración de `JWT_EXPIRES_IN`) y lo guarda en la cookie `currentUser` con `httpOnly: true`, `sameSite: 'lax'`, `maxAge: 3600000` y `secure: true` solo en producción. El token **no** viaja en el body.
 
 Respuesta `200` (además setea la cookie `currentUser`):
 
@@ -190,7 +208,7 @@ Respuesta `200` (además setea la cookie `currentUser`):
 { "status": "success", "message": "Login correcto" }
 ```
 
-Respuesta `400` (falta `email` o `password`):
+Respuesta `400` (falta `email` o `password`, o no son texto):
 
 ```json
 { "status": "error", "message": "Faltan campos obligatorios" }
@@ -204,7 +222,7 @@ Respuesta `401` (email inexistente o contraseña incorrecta; el mensaje es siemp
 
 ### GET /api/sessions/current
 
-Ruta protegida: el middleware `auth` lee la cookie `currentUser`, verifica el JWT y guarda el payload en `req.user`.
+Ruta protegida: usa la estrategia `current` de Passport como middleware, que lee la cookie `currentUser`, valida el JWT y deja el usuario (`{ id, email, role }`) en `req.user`.
 
 Respuesta `200` (con la cookie):
 
@@ -220,7 +238,7 @@ Respuesta `401` (sin cookie, o con token inválido o expirado):
 
 ### POST /api/sessions/logout
 
-Elimina la cookie `currentUser`. Respuesta `200`:
+Elimina la cookie `currentUser` (no pasa por Passport). Respuesta `200`:
 
 ```json
 { "status": "success", "message": "Sesión cerrada" }
@@ -255,8 +273,10 @@ curl -X POST http://localhost:3000/api/sessions/logout -b ~/cookies.txt -c ~/coo
 ### Casos de prueba
 
 - Registro exitoso → login → `/current` → logout → `/current` devuelve `401`.
+- Registro con email duplicado → `409` "El email ya está registrado".
 - Login con email inexistente → `401` "Credenciales inválidas".
 - Login con contraseña incorrecta → `401` "Credenciales inválidas" (mismo mensaje).
 - `/current` sin cookie → `401`.
 - `/current` con token manipulado o expirado → `401`.
-- Registro: campos faltantes, email inválido y email duplicado devuelven `400`, `400` y `409`.
+- Registro con campos faltantes, email inválido o contraseña corta → `400`.
+- Registro con `role: "admin"` en el body → se ignora, el usuario se crea con `role: "user"`.

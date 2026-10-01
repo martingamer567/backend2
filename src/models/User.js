@@ -1,6 +1,7 @@
+import { ROLES } from "../config/roles.js";
 import mongoose from "mongoose";
 
-export const USER_ROLES = ["user", "organizer", "admin"];
+export const USER_ROLES = Object.values(ROLES);
 
 const userSchema = new mongoose.Schema(
   {

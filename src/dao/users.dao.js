@@ -4,4 +4,5 @@ export default class UsersDAO {
   create = (userData) => User.create(userData);
 
   getByEmail = (email) => User.findOne({ email }).lean();
+  getAll = () => User.find().select("-password").lean();
 }

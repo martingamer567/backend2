@@ -1,8 +1,9 @@
 import User from "../models/User.js";
 
 export default class UsersDAO {
-  create = (userData) => User.create(userData);
+  create = async (userData) => (await User.create(userData)).toObject();
 
   getByEmail = (email) => User.findOne({ email }).lean();
+
   getAll = () => User.find().select("-password").lean();
 }

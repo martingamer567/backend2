@@ -1,5 +1,5 @@
 import { eventsRepository } from "../repositories/events.repository.js";
-import { EVENT_STATUS } from "../models/Event.js";
+import { EVENT_STATUS } from "../config/constants.js";
 import { ROLES } from "../config/roles.js";
 import { HttpError } from "../utils/httpError.js";
 
@@ -30,8 +30,6 @@ const isMissing = (value) =>
 
 const isNonEmptyString = (value) =>
   typeof value === "string" && value.trim() !== "";
-
-const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const parseDate = (value) => {
   if (typeof value !== "string") return null;
@@ -65,19 +63,6 @@ const assertValidId = (id) => {
   }
 };
 
-const toPublicEvent = (event) => ({
-  id: event._id.toString(),
-  title: event.title,
-  description: event.description,
-  category: event.category,
-  date: event.date,
-  location: event.location,
-  capacity: event.capacity,
-  price: event.price,
-  status: event.status,
-  organizer: event.organizer.toString(),
-});
-
 export default class EventsService {
   constructor(repository) {
     this.repository = repository;
@@ -103,8 +88,6 @@ export default class EventsService {
     const { status, category, location, dateFrom, dateTo, page, limit, sort } =
       query ?? {};
 
-    const filter = {};
-
     if (status !== undefined && !Object.values(EVENT_STATUS).includes(status)) {
       throw new HttpError(
         400,
@@ -112,51 +95,36 @@ export default class EventsService {
       );
     }
     const requestedStatus = status ?? EVENT_STATUS.PUBLISHED;
-    filter.status =
-      requestedStatus === EVENT_STATUS.DRAFT ? { $in: [] } : requestedStatus;
 
-  
-    if (category !== undefined) {
-      if (!isNonEmptyString(category)) {
-        throw new HttpError(400, "La categoría no es válida");
-      }
-      filter.category = new RegExp(`^${escapeRegex(category.trim())}$`, "i");
+    if (category !== undefined && !isNonEmptyString(category)) {
+      throw new HttpError(400, "La categoría no es válida");
+    }
+    if (location !== undefined && !isNonEmptyString(location)) {
+      throw new HttpError(400, "La ubicación no es válida");
     }
 
-    if (location !== undefined) {
-      if (!isNonEmptyString(location)) {
-        throw new HttpError(400, "La ubicación no es válida");
-      }
-      filter.location = new RegExp(`^${escapeRegex(location.trim())}$`, "i");
-    }
-
-    const dateRange = {};
+    let from;
+    let to;
 
     if (dateFrom !== undefined) {
-      const from = parseDate(dateFrom);
+      from = parseDate(dateFrom);
       if (!from) {
         throw new HttpError(400, "dateFrom no es una fecha válida");
       }
-      dateRange.$gte = from;
     }
 
     if (dateTo !== undefined) {
-      const to = parseDate(dateTo);
+      to = parseDate(dateTo);
       if (!to) {
         throw new HttpError(400, "dateTo no es una fecha válida");
       }
       if (DATE_ONLY_REGEX.test(dateTo)) {
         to.setUTCHours(23, 59, 59, 999);
       }
-      dateRange.$lte = to;
     }
 
-    if (dateRange.$gte && dateRange.$lte && dateRange.$gte > dateRange.$lte) {
+    if (from && to && from > to) {
       throw new HttpError(400, "dateFrom no puede ser posterior a dateTo");
-    }
-
-    if (Object.keys(dateRange).length > 0) {
-      filter.date = dateRange;
     }
 
     const currentPage = parseIntegerParam(page, DEFAULT_PAGE, "page", MAX_PAGE);
@@ -180,15 +148,31 @@ export default class EventsService {
       );
     }
 
-    const { data, total } = await this.repository.getEvents({
-      filter,
-      sort: { [sortField]: descending ? -1 : 1, _id: 1 },
+    if (requestedStatus === EVENT_STATUS.DRAFT) {
+      return {
+        data: [],
+        page: currentPage,
+        limit: currentLimit,
+        total: 0,
+        totalPages: 0,
+      };
+    }
+
+    const { data, total } = await this.repository.findEvents({
+      filters: {
+        status: requestedStatus,
+        category: category?.trim(),
+        location: location?.trim(),
+        dateFrom: from,
+        dateTo: to,
+      },
+      sort: { field: sortField, direction: descending ? -1 : 1 },
       page: currentPage,
       limit: currentLimit,
     });
 
     return {
-      data: data.map(toPublicEvent),
+      data,
       page: currentPage,
       limit: currentLimit,
       total,
@@ -204,7 +188,7 @@ export default class EventsService {
       throw new HttpError(404, "Evento no encontrado");
     }
 
-    return toPublicEvent(event);
+    return event;
   };
 
   createEvent = async (user, body) => {
@@ -258,7 +242,7 @@ export default class EventsService {
       initialStatus = status;
     }
 
-    const event = await this.repository.createEvent({
+    return this.repository.createEvent({
       title: title.trim(),
       description: description.trim(),
       category: category.trim(),
@@ -269,8 +253,6 @@ export default class EventsService {
       status: initialStatus,
       organizer: user.id,
     });
-
-    return toPublicEvent(event);
   };
 
   updateEvent = async (id, user, body) => {
@@ -324,8 +306,7 @@ export default class EventsService {
       throw new HttpError(400, "No hay campos para actualizar");
     }
 
-    const updated = await this.repository.updateEvent(id, changes);
-    return toPublicEvent(updated);
+    return this.repository.updateEvent(id, changes);
   };
 
   changeEventStatus = async (id, user, body) => {
@@ -360,8 +341,7 @@ export default class EventsService {
       );
     }
 
-    const updated = await this.repository.updateEvent(id, { status });
-    return toPublicEvent(updated);
+    return this.repository.updateEvent(id, { status });
   };
 }
 

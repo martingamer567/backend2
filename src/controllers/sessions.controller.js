@@ -1,5 +1,6 @@
 import { config } from "../config/config.js";
 import { generateToken } from "../utils/jwt.js";
+import { UserDTO, CurrentUserDTO } from "../dto/user.dto.js";
 
 const COOKIE_NAME = "currentUser";
 
@@ -14,31 +15,22 @@ export const getSessions = (req, res) => {
 };
 
 export const register = (req, res) => {
-  return res.status(201).json({ status: "success", payload: req.user });
+  return res
+    .status(201)
+    .json({ status: "success", payload: new UserDTO(req.user) });
 };
 
 export const login = (req, res) => {
-  try {
-    const { id, email, role } = req.user;
-    const token = generateToken({ id, email, role });
+  const token = generateToken({ ...new CurrentUserDTO(req.user) });
 
-    res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: 3600000 });
-    return res
-      .status(200)
-      .json({ status: "success", message: "Login correcto" });
-  } catch (error) {
-    console.error(error);
-    return res
-      .status(500)
-      .json({ status: "error", message: "Error interno del servidor" });
-  }
+  res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: 3600000 });
+  return res.status(200).json({ status: "success", message: "Login correcto" });
 };
 
 export const current = (req, res) => {
-  const { id, email, role } = req.user;
   return res
     .status(200)
-    .json({ status: "success", payload: { id, email, role } });
+    .json({ status: "success", payload: new CurrentUserDTO(req.user) });
 };
 
 export const logout = (req, res) => {

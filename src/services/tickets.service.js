@@ -1,8 +1,7 @@
 import crypto from "crypto";
 import { ticketsRepository } from "../repositories/tickets.repository.js";
 import { eventsRepository } from "../repositories/events.repository.js";
-import { EVENT_STATUS } from "../models/Event.js";
-import { TICKET_STATUS } from "../models/Ticket.js";
+import { EVENT_STATUS, TICKET_STATUS } from "../config/constants.js";
 import { ROLES } from "../config/roles.js";
 import { HttpError } from "../utils/httpError.js";
 import { sendEnrollmentConfirmation } from "../utils/mailer.js";
@@ -17,43 +16,6 @@ const assertValidId = (id, label) => {
 
 const generateReservationCode = () =>
   `RES-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
-
-const toPublicTicket = (ticket) => {
-  const result = {
-    id: ticket._id.toString(),
-    status: ticket.status,
-    quantity: ticket.quantity,
-    reservationCode: ticket.reservationCode,
-    createdAt: ticket.createdAt,
-    cancelledAt: ticket.cancelledAt ?? null,
-  };
-
-  const { event, user } = ticket;
-
-    if (event && event.title !== undefined) {
-    result.event = {
-      id: event._id.toString(),
-      title: event.title,
-      date: event.date,
-      location: event.location,
-    };
-  } else {
-    result.event = event ? event.toString() : null;
-  }
-
-  if (user && user.email !== undefined) {
-    result.user = {
-      id: user._id.toString(),
-      first_name: user.first_name,
-      last_name: user.last_name,
-      email: user.email,
-    };
-  } else {
-    result.user = user ? user.toString() : null;
-  }
-
-  return result;
-};
 
 export default class TicketsService {
   constructor(ticketsRepo, eventsRepo, mailSender) {
@@ -126,13 +88,10 @@ export default class TicketsService {
       );
     }
 
-    return toPublicTicket(ticket);
+    return ticket;
   };
 
-  getMyTickets = async (user) => {
-    const tickets = await this.ticketsRepo.getTicketsByUser(user.id);
-    return tickets.map(toPublicTicket);
-  };
+  getMyTickets = (user) => this.ticketsRepo.getTicketsByUser(user.id);
 
   getEventTickets = async (eventId, user) => {
     assertValidId(eventId, "evento");
@@ -147,8 +106,7 @@ export default class TicketsService {
       throw new HttpError(403, "No tenés permisos para realizar esta acción");
     }
 
-    const tickets = await this.ticketsRepo.getTicketsByEvent(eventId);
-    return tickets.map(toPublicTicket);
+    return this.ticketsRepo.getTicketsByEvent(eventId);
   };
 
   cancelTicket = async (ticketId, user) => {
@@ -168,8 +126,7 @@ export default class TicketsService {
       throw new HttpError(409, "El ticket ya está cancelado");
     }
 
-    const cancelled = await this.ticketsRepo.cancelTicket(ticketId);
-    return toPublicTicket(cancelled);
+    return this.ticketsRepo.cancelTicket(ticketId);
   };
 }
 

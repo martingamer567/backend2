@@ -1,69 +1,48 @@
 import { eventsService } from "../services/events.service.js";
+import { EventDTO } from "../dto/event.dto.js";
+import { asyncHandler } from "../utils/asyncHandler.js";
 
-const handleError = (res, error) => {
-  const statusCode = error.statusCode || 500;
+export const getEvents = asyncHandler(async (req, res) => {
+  const { data, ...pagination } = await eventsService.getEvents(req.query);
+  return res.status(200).json({
+    status: "success",
+    data: data.map((event) => new EventDTO(event)),
+    ...pagination,
+  });
+});
 
-  if (statusCode === 500) {
-    console.error(error);
-    return res
-      .status(500)
-      .json({ status: "error", message: "Error interno del servidor" });
-  }
-
+export const getEventById = asyncHandler(async (req, res) => {
+  const event = await eventsService.getEventById(req.params.id);
   return res
-    .status(statusCode)
-    .json({ status: "error", message: error.message });
-};
+    .status(200)
+    .json({ status: "success", payload: new EventDTO(event) });
+});
 
-export const getEvents = async (req, res) => {
-  try {
-    const result = await eventsService.getEvents(req.query);
-    return res.status(200).json({ status: "success", ...result });
-  } catch (error) {
-    return handleError(res, error);
-  }
-};
+export const createEvent = asyncHandler(async (req, res) => {
+  const event = await eventsService.createEvent(req.user, req.body);
+  return res
+    .status(201)
+    .json({ status: "success", payload: new EventDTO(event) });
+});
 
-export const getEventById = async (req, res) => {
-  try {
-    const event = await eventsService.getEventById(req.params.id);
-    return res.status(200).json({ status: "success", payload: event });
-  } catch (error) {
-    return handleError(res, error);
-  }
-};
+export const updateEvent = asyncHandler(async (req, res) => {
+  const event = await eventsService.updateEvent(
+    req.params.id,
+    req.user,
+    req.body,
+  );
+  return res
+    .status(200)
+    .json({ status: "success", payload: new EventDTO(event) });
+});
 
-export const createEvent = async (req, res) => {
-  try {
-    const event = await eventsService.createEvent(req.user, req.body);
-    return res.status(201).json({ status: "success", payload: event });
-  } catch (error) {
-    return handleError(res, error);
-  }
-};
-
-export const updateEvent = async (req, res) => {
-  try {
-    const event = await eventsService.updateEvent(
-      req.params.id,
-      req.user,
-      req.body,
-    );
-    return res.status(200).json({ status: "success", payload: event });
-  } catch (error) {
-    return handleError(res, error);
-  }
-};
-
-export const changeEventStatus = async (req, res) => {
-  try {
-    const event = await eventsService.changeEventStatus(
-      req.params.id,
-      req.user,
-      req.body,
-    );
-    return res.status(200).json({ status: "success", payload: event });
-  } catch (error) {
-    return handleError(res, error);
-  }
-};
+export const changeEventStatus = asyncHandler(async (req, res) => {
+  const event = await eventsService.changeEventStatus(
+    req.params.id,
+    req.user,
+    req.body,
+  );
+  return res
+    .status(200)
+    .json({ status: "success", payload: new EventDTO(event) });
+});

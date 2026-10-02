@@ -1,8 +1,9 @@
 import mongoose from "mongoose";
-import Ticket, {
+import Ticket from "../models/Ticket.js";
+import {
   ACTIVE_TICKET_STATUSES,
   TICKET_STATUS,
-} from "../models/Ticket.js";
+} from "../config/constants.js";
 
 export default class TicketsDAO {
   create = (ticketData) => Ticket.create(ticketData);

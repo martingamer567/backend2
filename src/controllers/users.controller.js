@@ -1,23 +1,11 @@
-import { usersRepository } from "../repositories/users.repository.js";
+import { usersService } from "../services/users.service.js";
+import { UserDTO } from "../dto/user.dto.js";
+import { asyncHandler } from "../utils/asyncHandler.js";
 
-const toPublicUser = (user) => ({
-  id: user._id.toString(),
-  first_name: user.first_name,
-  last_name: user.last_name,
-  email: user.email,
-  role: user.role,
+export const getUsers = asyncHandler(async (req, res) => {
+  const users = await usersService.getUsers();
+  return res.status(200).json({
+    status: "success",
+    payload: users.map((user) => new UserDTO(user)),
+  });
 });
-
-export const getUsers = async (req, res) => {
-  try {
-    const users = await usersRepository.getUsers();
-    return res
-      .status(200)
-      .json({ status: "success", payload: users.map(toPublicUser) });
-  } catch (error) {
-    console.error(error);
-    return res
-      .status(500)
-      .json({ status: "error", message: "Error interno del servidor" });
-  }
-};

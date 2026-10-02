@@ -1,11 +1,5 @@
 import mongoose from "mongoose";
-
-export const EVENT_STATUS = Object.freeze({
-  DRAFT: "draft",
-  PUBLISHED: "published",
-  CANCELLED: "cancelled",
-  FINISHED: "finished",
-});
+import { EVENT_STATUS } from "../config/constants.js";
 
 const eventSchema = new mongoose.Schema(
   {

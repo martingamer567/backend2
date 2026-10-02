@@ -6,6 +6,10 @@ import {
   updateEvent,
   changeEventStatus,
 } from "../controllers/events.controller.js";
+import {
+  createTicket,
+  getEventTickets,
+} from "../controllers/tickets.controller.js";
 import { auth } from "../middlewares/auth.middleware.js";
 import { authorize } from "../middlewares/authorize.middleware.js";
 import { PERMISSIONS } from "../config/roles.js";
@@ -14,6 +18,13 @@ const router = Router();
 
 router.get("/", getEvents);
 router.get("/:id", getEventById);
+router.post("/:eid/tickets", auth, createTicket);
+router.get(
+  "/:eid/tickets",
+  auth,
+  authorize(...PERMISSIONS.manageOwnEvents),
+  getEventTickets,
+);
 router.post("/", auth, authorize(...PERMISSIONS.createEvents), createEvent);
 router.put(
   "/:id",

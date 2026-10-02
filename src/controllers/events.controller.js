@@ -17,8 +17,17 @@ const handleError = (res, error) => {
 
 export const getEvents = async (req, res) => {
   try {
-    const events = await eventsService.getPublishedEvents();
-    return res.status(200).json({ status: "success", payload: events });
+    const result = await eventsService.getEvents(req.query);
+    return res.status(200).json({ status: "success", ...result });
+  } catch (error) {
+    return handleError(res, error);
+  }
+};
+
+export const getEventById = async (req, res) => {
+  try {
+    const event = await eventsService.getEventById(req.params.id);
+    return res.status(200).json({ status: "success", payload: event });
   } catch (error) {
     return handleError(res, error);
   }
@@ -46,9 +55,13 @@ export const updateEvent = async (req, res) => {
   }
 };
 
-export const cancelEvent = async (req, res) => {
+export const changeEventStatus = async (req, res) => {
   try {
-    const event = await eventsService.cancelEvent(req.params.id, req.user);
+    const event = await eventsService.changeEventStatus(
+      req.params.id,
+      req.user,
+      req.body,
+    );
     return res.status(200).json({ status: "success", payload: event });
   } catch (error) {
     return handleError(res, error);

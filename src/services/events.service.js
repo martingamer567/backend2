@@ -279,6 +279,9 @@ export default class EventsService {
       if (!parsedDate) {
         throw new HttpError(400, "La fecha no es válida");
       }
+      if (parsedDate < new Date()) {
+        throw new HttpError(400, "La fecha del evento no puede ser pasada");
+      }
       changes.date = parsedDate;
     }
 

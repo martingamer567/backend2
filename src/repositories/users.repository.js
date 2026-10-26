@@ -8,6 +8,7 @@ export default class UsersRepository {
   createUser = (userData) => this.dao.create(userData);
 
   getUserByEmail = (email) => this.dao.getByEmail(email);
+  getUserById = (id) => this.dao.getById(id);
   getUsers = () => this.dao.getAll();
 }
 

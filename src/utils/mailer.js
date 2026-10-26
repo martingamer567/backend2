@@ -15,13 +15,14 @@ const getTransporter = () => {
   return transporter;
 };
 
-export const sendEnrollmentConfirmation = async ({ to, event, ticket }) => {
-  const eventDate = new Date(event.date).toLocaleString("es-AR", {
+const formatEventDate = (date) =>
+  new Date(date).toLocaleString("es-AR", {
     dateStyle: "full",
     timeStyle: "short",
     timeZone: "America/Argentina/Cordoba",
   });
 
+export const sendEnrollmentConfirmation = async ({ to, event, ticket }) => {
   await getTransporter().sendMail({
     from: config.mail.from,
     to,
@@ -30,10 +31,29 @@ export const sendEnrollmentConfirmation = async ({ to, event, ticket }) => {
       "¡Tu inscripción fue confirmada!",
       "",
       `Evento: ${event.title}`,
-      `Fecha: ${eventDate}`,
+      `Fecha: ${formatEventDate(event.date)}`,
       `Lugar: ${event.location}`,
       `Cantidad de entradas: ${ticket.quantity}`,
       `Código de reserva: ${ticket.reservationCode}`,
+    ].join("\n"),
+  });
+};
+
+export const sendCancellationNotice = async ({ to, event, ticket }) => {
+  await getTransporter().sendMail({
+    from: config.mail.from,
+    to,
+    subject: `Inscripción cancelada: ${event.title}`,
+    text: [
+      "Tu inscripción fue cancelada.",
+      "",
+      `Evento: ${event.title}`,
+      `Fecha: ${formatEventDate(event.date)}`,
+      `Lugar: ${event.location}`,
+      `Cantidad de entradas: ${ticket.quantity}`,
+      `Código de reserva: ${ticket.reservationCode}`,
+      "",
+      "Los cupos quedaron liberados. Si querés, podés volver a inscribirte.",
     ].join("\n"),
   });
 };

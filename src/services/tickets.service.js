@@ -1,10 +1,14 @@
 import crypto from "crypto";
 import { ticketsRepository } from "../repositories/tickets.repository.js";
 import { eventsRepository } from "../repositories/events.repository.js";
+import { usersRepository } from "../repositories/users.repository.js";
 import { EVENT_STATUS, TICKET_STATUS } from "../config/constants.js";
 import { ROLES } from "../config/roles.js";
 import { HttpError } from "../utils/httpError.js";
-import { sendEnrollmentConfirmation } from "../utils/mailer.js";
+import {
+  sendEnrollmentConfirmation,
+  sendCancellationNotice,
+} from "../utils/mailer.js";
 
 const OBJECT_ID_REGEX = /^[0-9a-fA-F]{24}$/;
 
@@ -18,10 +22,18 @@ const generateReservationCode = () =>
   `RES-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
 
 export default class TicketsService {
-  constructor(ticketsRepo, eventsRepo, mailSender) {
+  constructor(
+    ticketsRepo,
+    eventsRepo,
+    mailSender,
+    usersRepo,
+    cancellationMailSender,
+  ) {
     this.ticketsRepo = ticketsRepo;
     this.eventsRepo = eventsRepo;
     this.mailSender = mailSender;
+    this.usersRepo = usersRepo;
+    this.cancellationMailSender = cancellationMailSender;
   }
 
   createTicket = async (user, eventId, body) => {
@@ -126,7 +138,27 @@ export default class TicketsService {
       throw new HttpError(409, "El ticket ya está cancelado");
     }
 
-    return this.ticketsRepo.cancelTicket(ticketId);
+    const cancelledTicket = await this.ticketsRepo.cancelTicket(ticketId);
+
+    await this.notifyCancellation(cancelledTicket);
+
+    return cancelledTicket;
+  };
+
+  notifyCancellation = async (ticket) => {
+    try {
+      const [owner, event] = await Promise.all([
+        this.usersRepo.getUserById(ticket.user),
+        this.eventsRepo.getEventById(ticket.event),
+      ]);
+
+      await this.cancellationMailSender({ to: owner.email, event, ticket });
+    } catch (error) {
+      console.error(
+        "No se pudo enviar el email de cancelación:",
+        error.message,
+      );
+    }
   };
 }
 
@@ -134,4 +166,6 @@ export const ticketsService = new TicketsService(
   ticketsRepository,
   eventsRepository,
   sendEnrollmentConfirmation,
+  usersRepository,
+  sendCancellationNotice,
 );

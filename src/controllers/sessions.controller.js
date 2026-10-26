@@ -10,10 +10,6 @@ const cookieOptions = {
   secure: config.nodeEnv === "production",
 };
 
-export const getSessions = (req, res) => {
-  res.status(200).json({ status: "success", payload: [] });
-};
-
 export const register = (req, res) => {
   return res
     .status(201)

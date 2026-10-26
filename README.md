@@ -286,7 +286,6 @@ En ningún caso se usa `500` para estas situaciones.
 | GET    | `/api/tickets/my-tickets` | Lista los tickets del usuario autenticado           | **Sí**          | cualquiera |
 | PATCH  | `/api/tickets/:tid/cancel` | Cancela un ticket                                  | **Sí**          | dueño del ticket, admin |
 | GET    | `/api/users`             | Lista todos los usuarios (sin `password`)            | **Sí**          | admin |
-| GET    | `/api/sessions`          | Lista de sesiones (vacía por ahora)                  | No              | -     |
 | POST   | `/api/sessions/register` | Registra un usuario nuevo (estrategia `register`)    | No              | -     |
 | POST   | `/api/sessions/login`    | Inicia sesión (estrategia `login`) y guarda el JWT en la cookie `currentUser` | No | - |
 | GET    | `/api/sessions/current`  | Devuelve los datos del usuario autenticado           | **Sí**          | cualquiera |
@@ -571,13 +570,6 @@ Ruta administrativa: solo `admin`. Nunca incluye `password`. Respuesta `200`:
 
 Respuesta `401` (sin sesión) y `403` (rol distinto de `admin`), con los mensajes descriptos en la sección de 401 y 403.
 
-### GET /api/sessions
-
-Respuesta `200`:
-
-```json
-{ "status": "success", "payload": [] }
-```
 
 ### POST /api/sessions/register
 

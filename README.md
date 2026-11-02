@@ -4,7 +4,25 @@ API REST para una plataforma de gestión de eventos y sesiones. Permite administ
 
 **Temática elegida:** Plataforma de eventos (events & sessions).
 
-Este repositorio corresponde a la **Pre-entrega 8**: refactor de toda la API a una **arquitectura profesional en capas** (rutas → controllers → services → repositories → DAOs), con **DTOs** para todas las respuestas sensibles y un **manejo de errores centralizado**, sin cambiar el comportamiento externo de ningún endpoint (sesiones, eventos y tickets responden igual que antes).
+Este repositorio corresponde a la **Entrega Final**: la versión completa e integrada de la API, con autenticación (JWT en cookie `httpOnly` y Passport.js), roles y autorización, gestión de eventos, inscripciones con control de cupos, emails con Nodemailer y una **arquitectura profesional en capas** (routes → controllers → services → repositories → DAOs), con **DTOs** en todas las respuestas y **manejo de errores centralizado**. Incluye una suite de tests de integración (`npm test`).
+
+## Contenido
+
+- [Tecnologías](#tecnologías)
+- [Instalación](#instalación)
+- [Configuración de variables de entorno](#configuración-de-variables-de-entorno)
+- [Comandos](#comandos)
+- [Tests automatizados](#tests-automatizados)
+- [Estructura de carpetas](#estructura-de-carpetas)
+- [Arquitectura en capas](#arquitectura-en-capas)
+- [Estrategias de Passport](#estrategias-de-passport)
+- [Roles y autorización](#roles-y-autorización)
+- [Usuarios de prueba](#usuarios-de-prueba)
+- [Rutas disponibles](#rutas-disponibles)
+- [Entidad Event y reglas de negocio](#entidad-event-y-reglas-de-negocio)
+- [Tickets e inscripciones](#tickets-e-inscripciones)
+- [Flujos de uso](#flujos-de-uso)
+- [Cómo probar los endpoints](#cómo-probar-los-endpoints)
 
 ## Tecnologías
 
@@ -25,14 +43,14 @@ Este repositorio corresponde a la **Pre-entrega 8**: refactor de toda la API a u
 1. Clonar el repositorio:
 
 ```bash
-   git clone https://github.com/martingamer567/backend2.git
-   cd backend2
+git clone https://github.com/martingamer567/backend2.git
+cd backend2
 ```
 
 2. Instalar dependencias:
 
 ```bash
-   npm install
+npm install
 ```
 
 ## Configuración de variables de entorno
@@ -59,21 +77,35 @@ El archivo `.env` real **no se sube al repositorio** (está excluido en `.gitign
 | `MAIL_FROM`          | Remitente que se muestra en los emails                               | `"Plataforma de Eventos <tu_mail@gmail.com>"`                                                    |
 | `BCRYPT_SALT_ROUNDS` | Rondas de sal para el hash de contraseñas (opcional, por defecto `10`) | `10`                                                                                           |
 
-## Cómo ejecutar
+## Comandos
 
-Modo desarrollo (con recarga automática ante cambios en el código; si cambiás el `.env` hay que reiniciar):
+| Comando | Qué hace |
+| ------- | -------- |
+| `npm install` | Instala las dependencias |
+| `npm run dev` | Levanta el servidor en modo desarrollo (recarga automática ante cambios en el código) |
+| `npm start` | Levanta el servidor en modo producción |
+| `npm test` | Ejecuta la suite de tests de integración |
+
+Si cambiás el `.env` hay que reiniciar el servidor. El servidor toma el puerto desde la variable de entorno `PORT` (por defecto `3000` si no está definida).
+
+## Tests automatizados
+
+La suite de integración está en `test/api.test.js` y usa el ejecutor de tests nativo de Node (`node:test`), `supertest` y `mongodb-memory-server`.
 
 ```bash
-npm run dev
+npm test
 ```
 
-Modo producción:
+- Levanta la API completa contra una **base MongoDB en memoria**: no toca la base real de Atlas y **no necesita archivo `.env`**.
+- **No envía emails reales**: el transporte de Nodemailer se reemplaza por uno falso que guarda los mensajes, y los tests verifican a quién se enviaron y con qué asunto.
+- La primera ejecución descarga un binario de MongoDB (unos cientos de MB), por lo que puede tardar unos minutos; después queda en caché.
 
-```bash
-npm start
-```
+Qué cubre (34 tests):
 
-El servidor toma el puerto desde la variable de entorno `PORT` (por defecto `3000` si no está definida).
+- **Autenticación**: registro (sin `password` en la respuesta, `role` siempre `user`, email duplicado), login, cookie `httpOnly`, `/current`, logout y el `401` posterior.
+- **Roles**: `401` sin sesión y `403` por rol insuficiente (crear eventos, listar usuarios, ver los tickets de un evento).
+- **Eventos**: creación, validaciones (fecha pasada, `capacity`, `price`), edición del dueño, `403` a un organizer ajeno, edición por `admin`, evento cancelado y listado paginado.
+- **Inscripciones**: alta con email de confirmación, duplicado, falta de cupo, evento cancelado, `my-tickets`, cancelación (también por `admin`), liberación de cupo, email de cancelación y falla del envío de email sin perder la operación.
 
 ## Estructura de carpetas
 
@@ -131,6 +163,8 @@ backend2/
 │       ├── jwt.js                    # Firma de JWT
 │       ├── mailer.js                 # Envío de emails con Nodemailer
 │       └── httpError.js              # Error con statusCode para el flujo de la API
+├── test/
+│   └── api.test.js                   # Tests de integración (node:test + supertest + MongoDB en memoria)
 ├── .env.example
 ├── .gitignore
 ├── package.json
@@ -271,6 +305,21 @@ En ningún caso se usa `500` para estas situaciones.
 | PATCH  | `/api/tickets/:tid/cancel`    | Dueño del ticket y `admin` |
 | GET    | `/api/users`                  | Solo `admin` (ruta administrativa) |
 
+## Usuarios de prueba
+
+La API no incluye un script de datos de ejemplo: los usuarios de prueba se crean a mano en pocos pasos (los tests automatizados crean los suyos).
+
+1. Registrá tres usuarios con `POST /api/sessions/register` (todos nacen con rol `user`). Por ejemplo:
+
+| Email | Rol buscado | Contraseña de ejemplo |
+| ----- | ----------- | --------------------- |
+| `ana@mail.com` | `user` | `Secreta123` |
+| `org@mail.com` | `organizer` | `Secreta123` |
+| `admin@mail.com` | `admin` | `Secreta123` |
+
+2. En MongoDB Atlas (*Data Explorer* → base `eventos` → colección `users`), cambiá el campo `role` de `org@mail.com` a `organizer` y el de `admin@mail.com` a `admin`.
+3. Iniciá sesión con cada uno con `POST /api/sessions/login`. Si le cambiaste el rol a un usuario que ya había iniciado sesión, tiene que volver a iniciar sesión para que el token refleje el rol nuevo.
+
 ## Rutas disponibles
 
 | Método | Ruta                     | Descripción                                          | Requiere sesión | Roles |
@@ -308,7 +357,7 @@ Respuesta `200`:
 | `title`       | String   | Obligatorio |
 | `description` | String   | Obligatorio |
 | `category`    | String   | Obligatorio |
-| `date`        | Date     | Obligatorio, no puede ser pasada al crear |
+| `date`        | Date     | Obligatorio, no puede ser pasada (ni al crear ni al editar) |
 | `location`    | String   | Obligatorio |
 | `capacity`    | Number   | Obligatorio, entero mayor que 0 |
 | `price`       | Number   | Obligatorio, mayor o igual a 0 |
@@ -317,7 +366,7 @@ Respuesta `200`:
 
 ### Reglas de negocio
 
-- La fecha de un evento no puede ser pasada al crearlo (`400`).
+- La fecha de un evento no puede ser pasada, ni al crearlo ni al editarlo (`400`).
 - La capacidad debe ser un entero mayor que 0 (`400`).
 - El precio debe ser mayor o igual a 0 (`400`).
 - Solo `organizer` y `admin` crean eventos; el `organizer` es el usuario autenticado.
@@ -419,7 +468,7 @@ Requiere sesión y rol `organizer` (solo sus eventos) o `admin`. Modificación p
 ```
 
 - `200`: devuelve el evento actualizado.
-- `400`: id inválido, campos inválidos o body sin campos (`"No hay campos para actualizar"`).
+- `400`: id inválido, campos inválidos, fecha pasada o body sin campos (`"No hay campos para actualizar"`).
 - `401`: sin sesión. `403`: sin permiso o evento ajeno. `404`: no existe.
 - `409`: el evento está cancelado.
 
@@ -456,7 +505,7 @@ Solo guarda **referencias** (no objetos embebidos): el usuario y el evento se al
 
 | Estado      | Significado | ¿Ocupa cupo? |
 | ----------- | ----------- | :----------: |
-| `confirmed` | Inscripción confirmada (estado inicial al inscribirse) | Sí |
+| `confirmed` | Inscripción confirmada y activa (estado inicial al inscribirse) | Sí |
 | `pending`   | Estado definido para flujos futuros (por ejemplo, pagos) | Sí |
 | `cancelled` | Inscripción cancelada; el documento **no se elimina** | No |
 
@@ -480,7 +529,12 @@ Solo cuentan los tickets con estado `confirmed` o `pending`. Los `cancelled` **n
 
 ### Notificaciones por email (Nodemailer)
 
-Al confirmarse una inscripción se envía un email a la dirección del usuario autenticado con el evento, la fecha, el lugar, la cantidad de entradas y el código de reserva. La configuración sale de variables de entorno (`MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS`, `MAIL_FROM`); ninguna credencial está en el código y `.env.example` las incluye con valores de ejemplo.
+Se envían dos emails, siempre a la dirección del **dueño del ticket**, con el evento, la fecha, el lugar, la cantidad de entradas y el código de reserva:
+
+- **Confirmación**: al inscribirse a un evento.
+- **Aviso de cancelación**: cuando el ticket pasa a `cancelled`. Si lo cancela un `admin`, el aviso le llega igual al dueño del ticket.
+
+Si el envío falla, la operación **no se revierte** (la inscripción o la cancelación se mantienen) y el error se registra en consola. La configuración sale de variables de entorno (`MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS`, `MAIL_FROM`); ninguna credencial está en el código y `.env.example` las incluye con valores de ejemplo.
 
 Con Gmail hay que activar la verificación en 2 pasos y generar una *contraseña de aplicación* (https://myaccount.google.com/apppasswords) para usarla en `MAIL_PASS`, con `MAIL_HOST=smtp.gmail.com` y `MAIL_PORT=587`.
 
@@ -547,7 +601,7 @@ Requiere sesión y rol `organizer` (solo de sus propios eventos) o `admin`. List
 
 ### PATCH /api/tickets/:tid/cancel
 
-Requiere sesión. Lo puede ejecutar el dueño del ticket o un `admin`. Cambia el estado a `cancelled` y registra `cancelledAt`; el documento no se elimina.
+Requiere sesión. Lo puede ejecutar el dueño del ticket o un `admin`. Cambia el estado a `cancelled` y registra `cancelledAt`; el documento no se elimina. Además envía un email de aviso de cancelación al dueño del ticket.
 
 - `200`: devuelve el ticket con `"status": "cancelled"` y `cancelledAt`.
 - `400`: id inválido. `401`: sin sesión.
@@ -569,7 +623,6 @@ Ruta administrativa: solo `admin`. Nunca incluye `password`. Respuesta `200`:
 ```
 
 Respuesta `401` (sin sesión) y `403` (rol distinto de `admin`), con los mensajes descriptos en la sección de 401 y 403.
-
 
 ### POST /api/sessions/register
 
@@ -654,6 +707,27 @@ Elimina la cookie `currentUser` (no pasa por Passport). Respuesta `200`:
 { "status": "success", "message": "Sesión cerrada" }
 ```
 
+## Flujos de uso
+
+### Flujo de autenticación
+
+1. `POST /api/sessions/register`: crea el usuario (rol `user`, contraseña hasheada con bcrypt). La respuesta nunca incluye `password`.
+2. `POST /api/sessions/login`: la estrategia `login` valida las credenciales y el controller genera un JWT con `{ id, email, role }`, que se guarda en la cookie `currentUser` (`httpOnly`). El token no viaja en el body.
+3. Rutas protegidas: el cliente envía la cookie en cada pedido; el middleware `auth` (estrategia `current`) valida el JWT y deja el usuario en `req.user`. Sin sesión válida responde `401`.
+4. Rutas con rol: después de `auth`, `authorize(...roles)` compara `req.user.role` con los roles permitidos. Rol insuficiente responde `403`.
+5. `GET /api/sessions/current`: devuelve `id`, `email` y `role` del usuario autenticado.
+6. `POST /api/sessions/logout`: elimina la cookie; el siguiente `/current` responde `401`.
+
+### Flujo de inscripción
+
+1. Un `organizer` (o `admin`) crea un evento con `POST /api/events`: queda `published` y con su `capacity`.
+2. Cualquier persona consulta los eventos con `GET /api/events` (filtros, paginación y orden).
+3. Un usuario autenticado se inscribe con `POST /api/events/:eid/tickets`. El service valida que el evento esté publicado, que `quantity` sea válida, que el usuario no tenga ya una inscripción activa y que haya cupo suficiente.
+4. Se crea el ticket `confirmed` con su `reservationCode` y se envía el email de confirmación. El cupo disponible baja: `capacity − suma de quantity de los tickets activos`.
+5. El usuario ve sus inscripciones con `GET /api/tickets/my-tickets`, y el `organizer` dueño (o un `admin`) ve las de un evento con `GET /api/events/:eid/tickets`.
+6. El dueño del ticket (o un `admin`) cancela con `PATCH /api/tickets/:tid/cancel`: el ticket pasa a `cancelled` (no se elimina), se registra `cancelledAt`, se envía el email de aviso y el **cupo queda liberado**.
+7. Con el cupo liberado, el mismo usuario u otro puede volver a inscribirse.
+
 ## Cómo probar los endpoints
 
 **Con curl** (el parámetro `-c` guarda la cookie en un archivo y `-b` la envía):
@@ -715,9 +789,10 @@ Autenticación y roles:
 - Registro con email duplicado → `409`; login inválido → `401`.
 - Registro con `role: "admin"` en el body → se ignora (rol `user`).
 
-Eventos (Pre-entrega 6):
+Eventos:
 
 - Crear con fecha pasada → `400`; con `capacity: 0` → `400`; con `price` negativo → `400`.
+- Editar un evento con una fecha pasada → `400`.
 - `organizer` edita un evento propio → `200`; edita uno ajeno → `403`; `admin` edita el de otro organizer → `200`.
 - Id inválido → `400`; id inexistente → `404`.
 - Cancelar un evento → `200`; cambiar el estado o editar un evento cancelado → `409`.
@@ -726,7 +801,7 @@ Eventos (Pre-entrega 6):
 - `GET /api/events?limit=101` → `400`; `status` inválido → `400`.
 - Los borradores no aparecen en el listado ni en `GET /api/events/:id`.
 
-Tickets e inscripciones (Pre-entrega 7):
+Tickets e inscripciones:
 
 - Inscripción exitosa → `201` y email de confirmación recibido.
 - Inscripción sin sesión → `401`.
@@ -735,13 +810,13 @@ Tickets e inscripciones (Pre-entrega 7):
 - `quantity` igual a 0, decimal o texto → `400`.
 - Inscripción cuando no hay cupo suficiente → `409` con los cupos disponibles.
 - Inscripción duplicada activa → `409`.
-- Cancelación propia → `200` con `cancelledAt`; el cupo queda libre y una nueva inscripción por ese cupo funciona.
+- Cancelación propia → `200` con `cancelledAt`; el cupo queda libre, una nueva inscripción por ese cupo funciona y llega el email de aviso de cancelación.
 - Cancelar un ticket ya cancelado → `409`; ticket inexistente → `404`.
 - Cancelar el ticket de otro usuario siendo `user` → `403`.
 - `GET /api/events/:eid/tickets` como `user` común → `403`; como `organizer` de otro evento → `403`; como `organizer` dueño → `200`.
 - `GET /api/tickets/my-tickets` devuelve solo los tickets propios, con `title`, `date` y `location` del evento.
 
-Arquitectura (Pre-entrega 8):
+Arquitectura:
 
 - Flujo completo: registro → login → crear evento (organizer) → inscribirse → mis tickets → cancelar.
 - `GET /api/sessions/current` devuelve solo `id`, `email` y `role` (sin `password`).

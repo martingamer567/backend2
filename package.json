@@ -1,7 +1,7 @@
 {
   "name": "proyecto-eventos-api",
   "version": "1.0.0",
-  "description": "API REST para una plataforma de gestion de eventos y sesiones",
+  "description": "API REST para una plataforma de gestion de eventos e inscripciones",
   "type": "module",
   "main": "src/server.js",
   "scripts": {

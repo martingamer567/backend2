@@ -1,8 +1,8 @@
 # Proyecto Eventos - API REST
 
-API REST para una plataforma de gestión de eventos y sesiones. Permite administrar eventos y las sesiones asociadas a cada uno (charlas, talleres, etc.), junto con los usuarios que participan de la plataforma.
+API REST para una plataforma de gestión de eventos. Permite crear y administrar eventos, y que los usuarios se inscriban a ellos mediante tickets con control de cupos, con autenticación y roles (`user`, `organizer`, `admin`).
 
-**Temática elegida:** Plataforma de eventos (events & sessions).
+**Temática elegida:** Plataforma de eventos e inscripciones.
 
 Este repositorio corresponde a la **Entrega Final**: la versión completa e integrada de la API, con autenticación (JWT en cookie `httpOnly` y Passport.js), roles y autorización, gestión de eventos, inscripciones con control de cupos, emails con Nodemailer y una **arquitectura profesional en capas** (routes → controllers → services → repositories → DAOs), con **DTOs** en todas las respuestas y **manejo de errores centralizado**. Incluye una suite de tests de integración (`npm test`).
 
